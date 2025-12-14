@@ -1,3 +1,6 @@
+###### will need to update variable names to make sure that the KNN pipeline dataset is used ( full not downsampled)
+
+
 ### we need to import the pandas and numpy (essential libraries)
 import pandas as pd
 import numpy as np
@@ -13,9 +16,13 @@ from sklearn.compose import ColumnTransformer ### this is needed to create the p
 from sklearn.pipeline import Pipeline ### this will create the pipeline 
 from sklearn.tree import DecisionTreeClassifier, plot_tree , DecisionTreeRegressor
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report , accuracy_score, recall_score, precision_recall_curve,precision_score, f1_score, roc_auc_score, confusion_matrix
-
-
+from sklearn.metrics import classification_report , accuracy_score, recall_score, precision_recall_curve,precision_score, f1_score, roc_auc_score, confusion_matrix, roc_curve
+################################################################################
+################################################################################
+#                       Start of Preprocessing                                 #
+################################################################################
+################################################################################
+## set a random seed 
 random_seed = 172193
 np.random.seed(random_seed)
 df = pd.read_excel('Larry/Employee_Data_Project.xlsx')
@@ -66,13 +73,20 @@ X_train_balanced = X_train_processed[keep_idx]
 y_train_balanced_df = pd.DataFrame(y_train_balanced , columns= ['Attrition_lab'])
 X_train_processed_balanced_df = pd.DataFrame(X_train_balanced , columns = feature_names)
 
+################################################################################
+################################################################################
+#                             End of preprocessing                             #
+################################################################################
+################################################################################
+
+
 
 ### Decision Tree Classifier
 
-tree = DecisionTreeClassifier(random_state=random_seed)
+pipe = DecisionTreeClassifier(random_state=random_seed)
 param_grid = {"ccp_alpha" : np.arange(0.001, 0.101, 0.01)}
 grid = GridSearchCV(
-    estimator=tree, 
+    estimator=pipe, 
     param_grid=param_grid,
     scoring= 'roc_auc',
     cv = 10, 
@@ -82,10 +96,111 @@ print("Best params:", grid.best_params_)
 print("Best mean CV ROC AUC:", grid.best_score_)
 best_tree = grid.best_estimator_
 cv_results = pd.DataFrame(grid.cv_results_)
-print("\nCV results:")
-print(cv_results[["param_ccp_alpha", "mean_test_score", "std_test_score"]])
 
-### Decision Tree Regression 
+plt.figure(figsize=(14,8))
+plot_tree(
+    best_tree,
+    feature_names = X_train_processed_balanced_df.columns.tolist(),
+    class_names = ['No Attrition (0)' , 'Attrition (1)'],
+    filled = True , 
+    rounded = True
+)
+plt.show()
+
+### get in-sample ROC curve and AUC 
+
+probs = best_tree.predict_proba(X_train_processed_balanced_df)
+true_idx = np.where(best_tree.classes_ ==1 )[0][0]
+probs_true = probs[:, true_idx]
+train_fpr , train_tpr , train_tresholds = roc_curve( y_train_balanced , probs_true)
+train_auc_value = roc_auc_score(y_train_balanced , probs_true)
+print("\nTrain ROC AUC for Attrition:", train_auc_value)
+plt.figure(figsize=(6, 6))
+plt.plot(train_fpr, train_tpr, label=f"AUC = {train_auc_value:.3f}")
+plt.plot([0, 1], [0, 1], "k--", label="Random")
+plt.xlabel("False Positive Rate")
+plt.ylabel("True Positive Rate")
+plt.title("ROC Curve - Attrition, training set")
+plt.legend(loc="lower right")
+plt.show()
+
+## Variable Importance: 
+importances = pd.Series(
+    best_tree.feature_importances_,
+    index = X_train_processed_balanced_df.columns).sort_values(ascending=False)
+print(f'\nVariable Importance: {importances}')
+plt.figure(figsize=(8,5))
+importances.head(15).plot(kind = 'barh')
+plt.gca().invert_yaxis()
+plt.title("Top variable importances (Decision Tree)")
+plt.xlabel("Importance")
+plt.show()
+
+### Look at two most important variables together ----
+
+top_two = importances.head(2).index.tolist()
+print("\nTop two variables:", top_two)
+
+## create a dataset for plotting 
+
+if len(top_two) == 2:
+    var_x, var_y = top_two
+    data_two_plot = X_train_processed_balanced_df.copy()
+    data_two_plot['Attrition_lab'] = y_train_balanced
+    plt.figure(figsize=(8, 6))
+    sns.scatterplot(
+        data = data_two_plot,
+        x=var_x,
+        y=var_y,
+        hue="Attrition_lab",
+        alpha=0.5
+    )
+    plt.title(f"{var_y} vs {var_x} by Attrition")
+    plt.legend(title = 'Attrition' , labels = ['No (0)' , 'Yes (1)'])
+    plt.tight_layout()
+    plt.show()
+
+## predictions and the final model evaulation on the test set 
+
+probs_test = best_tree.predict_proba(X_test_processed_df)
+probs_true_test = probs_test[:, true_idx]
+## get the ROC and the AUC for the test set 
+
+test_fpr , test_tpr , test_thresholds = roc_curve(y_test, probs_true_test) 
+test_auc_value = roc_auc_score(y_test, probs_true_test)
+
+print(f'\nTst ROC AUC for Attrition: {test_auc_value}')
+
+#### now we need to plot the ROC AUC curve
+
+plt.figure(figsize=(8,8))
+plt.plot(test_fpr , test_tpr , label = 'AUC')
+plt.plot([0,1],[0,1], 'k--' , label = 'Random')
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('ROC Curve - Attrition: Test Set')
+plt.legend(loc='lower right')
+plt.show()
+
+### Generate preditions at a 0.5 threshold 
+y_pred_test = (probs_true_test > 0.5).astype(int)
+accuracy_test = accuracy_score(y_test, y_pred_test)
+recall_test = recall_score(y_test, y_pred_test)
+precision_test = precision_score(y_test, y_pred_test)
+f1_test = f1_score(y_test, y_pred_test)
+print(f'Test Set -- Accuracy: {accuracy_test} , Recall: {recall_test} , Precision: {precision_test} , f1: {f1_test}')
+
+cm_test = confusion_matrix(y_test, y_pred_test)
+print(f'\nConfusion Matrix')
+print(cm_test)
+
+cr_test = classification_report(y_test, y_pred_test , target_names = ['No Attrition (0)'  , 'Attrition (1)'])
+print(f'\nClassification Report')
+print(cr_test)
+
+
+
+'''
 
 pipe = Pipeline([('tree', DecisionTreeRegressor(random_state=random_seed))])
 param_grid2 = {'tree__ccp_alpha' : np.arange(0.001,0.101, 0.01)}
@@ -101,7 +216,21 @@ print("Best Params:" , grid2.best_params_ )
 print("Best CV R-Sqaured:" , grid2.best_score_)
 
 best_pipe = grid2.best_estimator_
-best_tree = best_pipe.named_steps['tree']
+
+
+#### Plot the tree 
+
+plt.figure(figsize=(14,8))
+plot_tree(
+    best_tree1 = best_pipe.named_steps['tree'],
+    feature_names= X_train_processed_balanced_df.columns, 
+    class_names = best_tree.classes_.astype("str"),
+    filled = True, 
+    rounded = True
+)
+plt.title("Decision Tree")
+plt.show()
+### Decision Tree Regression 
 
 
 ## Random forest
@@ -163,3 +292,4 @@ print(cr1)
 
 
 ### Key Insight: With Random Forest: downsampling reduced precision and accuracy
+'''
