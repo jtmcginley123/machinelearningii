@@ -91,7 +91,7 @@ grid = GridSearchCV(
     scoring= 'roc_auc',
     cv = 10, 
     n_jobs = -1)
-grid.fit(X_train_processed_balanced_df, y_train_balanced)
+grid.fit(X_train_processed_df, y_train)
 print("Best params:", grid.best_params_)
 print("Best mean CV ROC AUC:", grid.best_score_)
 best_tree = grid.best_estimator_
@@ -100,7 +100,7 @@ cv_results = pd.DataFrame(grid.cv_results_)
 plt.figure(figsize=(14,8))
 plot_tree(
     best_tree,
-    feature_names = X_train_processed_balanced_df.columns.tolist(),
+    feature_names = X_train_processed_df.columns.tolist(),
     class_names = ['No Attrition (0)' , 'Attrition (1)'],
     filled = True , 
     rounded = True
@@ -109,11 +109,11 @@ plt.show()
 
 ### get in-sample ROC curve and AUC 
 
-probs = best_tree.predict_proba(X_train_processed_balanced_df)
+probs = best_tree.predict_proba(X_train_processed_df)
 true_idx = np.where(best_tree.classes_ ==1 )[0][0]
 probs_true = probs[:, true_idx]
-train_fpr , train_tpr , train_tresholds = roc_curve( y_train_balanced , probs_true)
-train_auc_value = roc_auc_score(y_train_balanced , probs_true)
+train_fpr , train_tpr , train_tresholds = roc_curve( y_train , probs_true)
+train_auc_value = roc_auc_score(y_train , probs_true)
 print("\nTrain ROC AUC for Attrition:", train_auc_value)
 plt.figure(figsize=(6, 6))
 plt.plot(train_fpr, train_tpr, label=f"AUC = {train_auc_value:.3f}")
@@ -127,7 +127,7 @@ plt.show()
 ## Variable Importance: 
 importances = pd.Series(
     best_tree.feature_importances_,
-    index = X_train_processed_balanced_df.columns).sort_values(ascending=False)
+    index = X_train_processed_df.columns).sort_values(ascending=False)
 print(f'\nVariable Importance: {importances}')
 plt.figure(figsize=(8,5))
 importances.head(15).plot(kind = 'barh')
@@ -145,8 +145,8 @@ print("\nTop two variables:", top_two)
 
 if len(top_two) == 2:
     var_x, var_y = top_two
-    data_two_plot = X_train_processed_balanced_df.copy()
-    data_two_plot['Attrition_lab'] = y_train_balanced
+    data_two_plot = X_train_processed_df.copy()
+    data_two_plot['Attrition_lab'] = y_train
     plt.figure(figsize=(8, 6))
     sns.scatterplot(
         data = data_two_plot,
@@ -175,7 +175,7 @@ print(f'\nTst ROC AUC for Attrition: {test_auc_value}')
 
 plt.figure(figsize=(8,8))
 plt.plot(test_fpr , test_tpr , label = 'AUC')
-plt.plot([0,1],[0,1], 'k--' , label = 'Random')
+plt.plot([0,1],[0,1], 'k--' , label=f"AUC = {test_auc_value:.3f}")
 plt.xlabel('False Positive Rate')
 plt.ylabel('True Positive Rate')
 plt.title('ROC Curve - Attrition: Test Set')

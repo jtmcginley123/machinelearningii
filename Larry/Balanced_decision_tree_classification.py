@@ -172,7 +172,7 @@ print(f'\nTst ROC AUC for Attrition: {test_auc_value}')
 
 plt.figure(figsize=(8,8))
 plt.plot(test_fpr , test_tpr , label = 'AUC')
-plt.plot([0,1],[0,1], 'k--' , label = 'Random')
+plt.plot([0,1],[0,1], 'k--' , label=f"AUC = {test_auc_value:.3f}")
 plt.xlabel('False Positive Rate')
 plt.ylabel('True Positive Rate')
 plt.title('ROC Curve - Attrition: Test Set')
